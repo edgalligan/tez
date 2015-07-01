@@ -1,20 +1,20 @@
 /**
-* Licensed to the Apache Software Foundation (ASF) under one
-* or more contributor license agreements.  See the NOTICE file
-* distributed with this work for additional information
-* regarding copyright ownership.  The ASF licenses this file
-* to you under the Apache License, Version 2.0 (the
-* "License"); you may not use this file except in compliance
-* with the License.  You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package org.apache.tez.dag.api.client;
 
@@ -44,86 +44,89 @@ import org.apache.tez.dag.app.security.authorize.TezAMPolicyProvider;
 import com.google.protobuf.BlockingService;
 
 public class DAGClientServer extends AbstractService {
-  static final Log LOG = LogFactory.getLog(DAGClientServer.class);
+	static final Log LOG = LogFactory.getLog(DAGClientServer.class);
 
-  ClientToAMTokenSecretManager secretManager;
-  DAGClientHandler realInstance;
-  Server server;
-  InetSocketAddress bindAddress;
+	ClientToAMTokenSecretManager secretManager;
+	DAGClientHandler realInstance;
+	Server server;
+	InetSocketAddress bindAddress;
+	private final Object lock;
 
-  public DAGClientServer(DAGClientHandler realInstance,
-      ApplicationAttemptId attemptId) {
-    super("DAGClientRPCServer");
-    this.realInstance = realInstance;
-    this.secretManager = new ClientToAMTokenSecretManager(attemptId, null);
-  }
+	public DAGClientServer(DAGClientHandler realInstance, ApplicationAttemptId attemptId) {
+		this(realInstance, attemptId, new Object());
+	}
 
-  @Override
-  public void serviceStart() {
-    try {
-      Configuration conf = getConfig();
-      InetSocketAddress addr = new InetSocketAddress(0);
+	public DAGClientServer(DAGClientHandler realInstance, ApplicationAttemptId attemptId, Object lock) {
+		super("DAGClientRPCServer");
+		this.realInstance = realInstance;
+		this.secretManager = new ClientToAMTokenSecretManager(attemptId, null);
+		this.lock = lock;
+	}
 
-      DAGClientAMProtocolBlockingPBServerImpl service =
-          new DAGClientAMProtocolBlockingPBServerImpl(realInstance);
+	@Override
+	public void serviceStart() {
+		try {
+			Configuration conf = getConfig();
+			InetSocketAddress addr = new InetSocketAddress(0);
 
-      BlockingService blockingService =
-                DAGClientAMProtocol.newReflectiveBlockingService(service);
+			DAGClientAMProtocolBlockingPBServerImpl service = new DAGClientAMProtocolBlockingPBServerImpl(realInstance);
 
-      int numHandlers = conf.getInt(TezConfiguration.TEZ_AM_CLIENT_THREAD_COUNT,
-                          TezConfiguration.TEZ_AM_CLIENT_THREAD_COUNT_DEFAULT);
+			BlockingService blockingService = DAGClientAMProtocol.newReflectiveBlockingService(service);
 
-      server = createServer(DAGClientAMProtocolBlockingPB.class, addr, conf,
-                            numHandlers, blockingService, TezConfiguration.TEZ_AM_CLIENT_AM_PORT_RANGE);
-      
-      // Enable service authorization?
-      if (conf.getBoolean(
-          CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHORIZATION,
-          false)) {
-        refreshServiceAcls(conf, new TezAMPolicyProvider());
-      }
+			int numHandlers = conf.getInt(TezConfiguration.TEZ_AM_CLIENT_THREAD_COUNT,
+					TezConfiguration.TEZ_AM_CLIENT_THREAD_COUNT_DEFAULT);
 
-      server.start();
-      bindAddress = NetUtils.getConnectAddress(server);
-      LOG.info("Instantiated DAGClientRPCServer at " + bindAddress);
-    } catch (Exception e) {
-      LOG.error("Failed to start DAGClientServer: ", e);
-      throw new TezUncheckedException(e);
-    }
-  }
+			server = createServer(DAGClientAMProtocolBlockingPB.class, addr, conf, numHandlers, blockingService,
+					TezConfiguration.TEZ_AM_CLIENT_AM_PORT_RANGE);
 
-  private void refreshServiceAcls(Configuration configuration, PolicyProvider policyProvider) {
-    this.server.refreshServiceAcl(configuration, policyProvider);
-  }
+			// Enable service authorization?
+			if (conf.getBoolean(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHORIZATION, false)) {
+				refreshServiceAcls(conf, new TezAMPolicyProvider());
+			}
 
-  @Override
-  public void serviceStop() {
-    if(server != null) {
-      server.stop();
-    }
-  }
+			server.start();
+			bindAddress = NetUtils.getConnectAddress(server);
+			LOG.info("Instantiated DAGClientRPCServer at " + bindAddress);
+		} catch (Exception e) {
+			LOG.error("Failed to start DAGClientServer: ", e);
+			throw new TezUncheckedException(e);
+		}
+	}
 
-  public InetSocketAddress getBindAddress() {
-    return bindAddress;
-  }
-  
-  public void setClientAMSecretKey(ByteBuffer key) {
-    if (key != null && key.hasRemaining()) {
-      // non-empty key. must be useful
-      secretManager.setMasterKey(key.array());
-    }
-  }
+	private void refreshServiceAcls(Configuration configuration, PolicyProvider policyProvider) {
+		this.server.refreshServiceAcl(configuration, policyProvider);
+	}
 
-  private Server createServer(Class<?> pbProtocol, InetSocketAddress addr, Configuration conf,
-      int numHandlers,
-      BlockingService blockingService, String portRangeConfig) throws IOException {
-    RPC.setProtocolEngine(conf, pbProtocol, ProtobufRpcEngine.class);
-    RPC.Server server = new RPC.Builder(conf).setProtocol(pbProtocol)
-        .setInstance(blockingService).setBindAddress(addr.getHostName())
-        .setPort(addr.getPort()).setNumHandlers(numHandlers).setVerbose(false)
-        .setPortRangeConfig(portRangeConfig).setSecretManager(secretManager)
-        .build();
-    server.addProtocol(RPC.RpcKind.RPC_PROTOCOL_BUFFER, pbProtocol, blockingService);
-    return server;
-  }
+	@Override
+	public void serviceStop() {
+		if (server != null) {
+			server.stop();
+		}
+	}
+
+	public InetSocketAddress getBindAddress() {
+		return bindAddress;
+	}
+
+	public void setClientAMSecretKey(ByteBuffer key) {
+		if (key != null && key.hasRemaining()) {
+			// non-empty key. must be useful
+			secretManager.setMasterKey(key.array());
+		}
+	}
+
+	private Server createServer(Class<?> pbProtocol, InetSocketAddress addr, Configuration conf, int numHandlers,
+			BlockingService blockingService, String portRangeConfig) throws IOException {
+		RPC.setProtocolEngine(conf, pbProtocol, ProtobufRpcEngine.class);
+		RPC.Server server = null;
+		synchronized(lock){
+			LOG.debug("Locked the RPCServer creation on " + lock);
+			server = new RPC.Builder(conf).setProtocol(pbProtocol).setInstance(blockingService)
+					.setBindAddress(addr.getHostName()).setPort(addr.getPort()).setNumHandlers(numHandlers)
+					.setVerbose(false).setPortRangeConfig(portRangeConfig).setSecretManager(secretManager).build();
+			server.addProtocol(RPC.RpcKind.RPC_PROTOCOL_BUFFER, pbProtocol, blockingService);
+			LOG.debug("Unlocked the RPCServer creation on " + lock);
+		}
+		return server;
+	}
 }

@@ -19,7 +19,7 @@
   <groupId>org.apache.tez</groupId>
   <artifactId>tez</artifactId>
   <packaging>pom</packaging>
-  <version>0.5.2</version>
+  <version>0.5.2.2.2.0.0-2041</version>
   <name>tez</name>
 
   <licenses>
@@ -37,7 +37,7 @@
   <properties>
     <maven.test.redirectTestOutputToFile>true</maven.test.redirectTestOutputToFile>
     <clover.license>${user.home}/clover.license</clover.license>
-    <hadoop.version>2.4.0</hadoop.version>
+    <hadoop.version>2.6.0.0.2.2.0.0-2041</hadoop.version>
     <jetty.version>7.6.10.v20130312</jetty.version>
     <distMgmtSnapshotsId>apache.snapshots.https</distMgmtSnapshotsId>
     <distMgmtSnapshotsName>Apache Development Snapshot Repository</distMgmtSnapshotsName>
@@ -75,6 +75,11 @@
       <name>${distMgmtSnapshotsName}</name>
       <url>${distMgmtSnapshotsUrl}</url>
     </repository>
+    <repository>
+      <id>repo.hortonworks.com</id>
+      <name>Hortonworks HDP Maven Repository</name>
+      <url>http://repo.hortonworks.com/content/repositories/releases/</url>
+    </repository>
   </repositories>
 
   <pluginRepositories>
@@ -89,6 +94,11 @@
       <name>${distMgmtSnapshotsName}</name>
       <url>${distMgmtSnapshotsUrl}</url>
       <layout>default</layout>
+    </pluginRepository>
+    <pluginRepository>
+      <id>repo.hortonworks.com</id>
+      <name>Hortonworks HDP Maven Repository</name>
+      <url>http://repo.hortonworks.com/content/repositories/releases/</url>
     </pluginRepository>
   </pluginRepositories>
 

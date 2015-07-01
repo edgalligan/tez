@@ -228,6 +228,7 @@ public class DAGAppMaster extends AbstractService {
   private final AtomicBoolean shutdownHandlerRunning = new AtomicBoolean(false);
 
   private DAGAppMasterState state;
+  private final Object lock = new Object();
 
   DAGClientServer clientRpcServer;
   private DAGClientHandler clientHandler;
@@ -355,7 +356,7 @@ public class DAGAppMaster extends AbstractService {
 
     addIfService(dispatcher, false);
 
-    clientRpcServer = new DAGClientServer(clientHandler, appAttemptID);
+    clientRpcServer = new DAGClientServer(clientHandler, appAttemptID, lock);
     addIfService(clientRpcServer, true);
 
     taskHeartbeatHandler = createTaskHeartbeatHandler(context, conf);
@@ -888,7 +889,7 @@ public class DAGAppMaster extends AbstractService {
   protected TaskAttemptListener createTaskAttemptListener(AppContext context,
       TaskHeartbeatHandler thh, ContainerHeartbeatHandler chh) {
     TaskAttemptListener lis =
-        new TaskAttemptListenerImpTezDag(context, thh, chh,jobTokenSecretManager);
+        new TaskAttemptListenerImpTezDag(context, thh, chh,jobTokenSecretManager, lock);
     return lis;
   }
 

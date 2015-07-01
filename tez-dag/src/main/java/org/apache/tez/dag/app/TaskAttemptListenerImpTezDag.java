@@ -70,9 +70,7 @@ public class TaskAttemptListenerImpTezDag extends AbstractService implements Tez
 		TaskAttemptListener {
 
 	private static final ContainerTask TASK_FOR_INVALID_JVM = new ContainerTask(null, true, null, null, false);
-	private static final int NUM_RETRIES = 5;
-	private static final int TIME_MS_BETWEEN_RETRIES = 100;
-
+	
 	private static final Log LOG = LogFactory.getLog(TaskAttemptListenerImpTezDag.class);
 
 	private final AppContext context;
@@ -82,6 +80,7 @@ public class TaskAttemptListenerImpTezDag extends AbstractService implements Tez
 	private final JobTokenSecretManager jobTokenSecretManager;
 	private InetSocketAddress address;
 	private Server server;
+	private final Object lock;
 
 	class ContainerInfo {
 		ContainerInfo(ContainerId containerId) {
@@ -103,11 +102,17 @@ public class TaskAttemptListenerImpTezDag extends AbstractService implements Tez
 
 	public TaskAttemptListenerImpTezDag(AppContext context, TaskHeartbeatHandler thh, ContainerHeartbeatHandler chh,
 			JobTokenSecretManager jobTokenSecretManager) {
+		this(context, thh, chh, jobTokenSecretManager, new Object());
+	}
+
+	public TaskAttemptListenerImpTezDag(AppContext context, TaskHeartbeatHandler thh, ContainerHeartbeatHandler chh,
+			JobTokenSecretManager jobTokenSecretManager, Object lock) {
 		super(TaskAttemptListenerImpTezDag.class.getName());
 		this.context = context;
 		this.jobTokenSecretManager = jobTokenSecretManager;
 		this.taskHeartbeatHandler = thh;
 		this.containerHeartbeatHandler = chh;
+		this.lock = lock;
 	}
 
 	@Override
@@ -118,44 +123,31 @@ public class TaskAttemptListenerImpTezDag extends AbstractService implements Tez
 	protected void startRpcServer() {
 		Configuration conf = getConfig();
 		if (!conf.getBoolean(TezConfiguration.TEZ_LOCAL_MODE, TezConfiguration.TEZ_LOCAL_MODE_DEFAULT)) {
-			boolean successful = false;
-			int attempt = 0;
-			while(attempt < NUM_RETRIES && !successful){
-				synchronized(this){
-					try {
-						attempt++;
-						server = new RPC.Builder(conf)
-								.setProtocol(TezTaskUmbilicalProtocol.class)
-								.setBindAddress("0.0.0.0")
-								.setPort(0)
-								.setPortRangeConfig(TezConfiguration.TEZ_AM_CLIENT_AM_PORT_RANGE)
-								.setInstance(this)
-								.setNumHandlers(
-										conf.getInt(TezConfiguration.TEZ_AM_TASK_LISTENER_THREAD_COUNT,
-												TezConfiguration.TEZ_AM_TASK_LISTENER_THREAD_COUNT_DEFAULT))
-								.setSecretManager(jobTokenSecretManager).build();
-
-						// Enable service authorization?
-						if (conf.getBoolean(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHORIZATION, false)) {
-							refreshServiceAcls(conf, new TezAMPolicyProvider());
-						}
-
-						server.start();
-						this.address = NetUtils.getConnectAddress(server);
-						successful = true;
-					} catch (IOException e) {
-						if(attempt >= NUM_RETRIES){
-							throw new TezUncheckedException(e);
-						} else {
-							LOG.info("Attempt number " + attempt + " failed to start RPC Server", e);	
-							try {
-								this.wait(TIME_MS_BETWEEN_RETRIES);
-							} catch (InterruptedException e1) {
-								LOG.debug("Thread was interrupted while waiting to retry starting the RPC Server.", e1);
-							}
-						}
-					}
+			try {
+				synchronized (lock) {
+					LOG.debug("Locked the RPCServer creation on " + lock);
+					server = new RPC.Builder(conf)
+							.setProtocol(TezTaskUmbilicalProtocol.class)
+							.setBindAddress("0.0.0.0")
+							.setPort(0)
+							.setPortRangeConfig(TezConfiguration.TEZ_AM_CLIENT_AM_PORT_RANGE)
+							.setInstance(this)
+							.setNumHandlers(
+									conf.getInt(TezConfiguration.TEZ_AM_TASK_LISTENER_THREAD_COUNT,
+											TezConfiguration.TEZ_AM_TASK_LISTENER_THREAD_COUNT_DEFAULT))
+							.setSecretManager(jobTokenSecretManager).build();
+					LOG.debug("Unlocked the RPCServer creation on " + lock);
 				}
+
+				// Enable service authorization?
+				if (conf.getBoolean(CommonConfigurationKeysPublic.HADOOP_SECURITY_AUTHORIZATION, false)) {
+					refreshServiceAcls(conf, new TezAMPolicyProvider());
+				}
+
+				server.start();
+				this.address = NetUtils.getConnectAddress(server);
+			} catch (IOException e) {
+				throw new TezUncheckedException(e);
 			}
 
 		} else {
