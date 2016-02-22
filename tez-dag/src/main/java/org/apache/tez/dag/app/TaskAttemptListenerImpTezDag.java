@@ -89,7 +89,6 @@ public class TaskAttemptListenerImpTezDag extends AbstractService implements
   private final JobTokenSecretManager jobTokenSecretManager;
   private InetSocketAddress address;
   private Server server;
-  private final Object lock;
 
   static class ContainerInfo {
     ContainerInfo() {
@@ -113,18 +112,11 @@ public class TaskAttemptListenerImpTezDag extends AbstractService implements
   public TaskAttemptListenerImpTezDag(AppContext context,
       TaskHeartbeatHandler thh, ContainerHeartbeatHandler chh,
       JobTokenSecretManager jobTokenSecretManager) {
-    this(context, thh, chh, jobTokenSecretManager, new Object());
-  }
-  
-  TaskAttemptListenerImpTezDag(AppContext context,
-      TaskHeartbeatHandler thh, ContainerHeartbeatHandler chh,
-      JobTokenSecretManager jobTokenSecretManager, Object lock) {
     super(TaskAttemptListenerImpTezDag.class.getName());
     this.context = context;
     this.jobTokenSecretManager = jobTokenSecretManager;
     this.taskHeartbeatHandler = thh;
     this.containerHeartbeatHandler = chh;
-    this.lock = lock;
   }
 
   @Override
@@ -136,18 +128,15 @@ public class TaskAttemptListenerImpTezDag extends AbstractService implements
     Configuration conf = getConfig();
     if (!conf.getBoolean(TezConfiguration.TEZ_LOCAL_MODE, TezConfiguration.TEZ_LOCAL_MODE_DEFAULT)) {
       try {
-        synchronized (lock) {
-          server = new RPC.Builder(conf)
-              .setProtocol(TezTaskUmbilicalProtocol.class)
-              .setBindAddress("0.0.0.0")
-              .setPort(0)
-              .setPortRangeConfig(TezConfiguration.TEZ_AM_CLIENT_AM_PORT_RANGE)
-              .setInstance(this)
-              .setNumHandlers(
-                  conf.getInt(TezConfiguration.TEZ_AM_TASK_LISTENER_THREAD_COUNT,
-                      TezConfiguration.TEZ_AM_TASK_LISTENER_THREAD_COUNT_DEFAULT))
-              .setSecretManager(jobTokenSecretManager).build();
-        }
+        server = new RPC.Builder(conf)
+            .setProtocol(TezTaskUmbilicalProtocol.class)
+            .setBindAddress("0.0.0.0")
+            .setPort(0)
+            .setInstance(this)
+            .setNumHandlers(
+                conf.getInt(TezConfiguration.TEZ_AM_TASK_LISTENER_THREAD_COUNT,
+                    TezConfiguration.TEZ_AM_TASK_LISTENER_THREAD_COUNT_DEFAULT))
+            .setSecretManager(jobTokenSecretManager).build();
 
         // Enable service authorization?
         if (conf.getBoolean(
